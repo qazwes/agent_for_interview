@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+**/node_modules/
+**/.venv/
+**/__pycache__/
+*.py[cod]
+**/dist/
+logs/
+.uv-cache/
+.pnpm-store/
+docker/embedding/
+.docker-validation/
+tests/artifacts/
+.ruff_cache/
+.pytest_cache/

@@ -1,0 +1,29 @@
+{
+  "name": "my-agent-frontend",
+  "description": "销售经管 AI 问数：会话、结果可视化、应用配置与回复校对。",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.app.json && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit -p tsconfig.app.json"
+  },
+  "dependencies": {
+    "echarts": "^6.1.0",
+    "lucide-react": "^0.475.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.2",
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^22.10.10",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

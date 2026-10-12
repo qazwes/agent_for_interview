@@ -1,0 +1,552 @@
+# 由 app/scripts/generate_demo_warehouse.py 生成，与 dw.sql 保持一致。
+tables:
+- name: dim_date
+  role: dim
+  description: 粒度：一自然日一行。日期维度；date_id 为 YYYYMMDD。分析月份/季度从此表分组；已确认收入数据截止 2026-05-31。
+  columns:
+  - name: date_id
+    role: primary_key
+    description: 日期编码 YYYYMMDD。
+    alias:
+    - 日期ID
+    sync: false
+  - name: calendar_date
+    role: dimension
+    description: 自然日期。
+    alias:
+    - 日期
+    - 时间
+    sync: false
+  - name: year
+    role: dimension
+    description: 自然年。年度目标以 target_year 直接关联此年份，不按每一天连接目标。
+    alias:
+    - 年度
+    - 年份
+    - 年
+    sync: true
+  - name: quarter
+    role: dimension
+    description: 季度，1 至 4。
+    alias:
+    - 季度
+    sync: true
+  - name: month
+    role: dimension
+    description: 月份，1 至 12。
+    alias:
+    - 月份
+    - 月
+    sync: true
+  - name: day
+    role: dimension
+    description: 日，1 至 31。
+    alias:
+    - 日
+    sync: false
+- name: dim_business_unit
+  role: dim
+  description: 粒度：一经营单元一行。经营单元维度，合并省份/城市/区域属性。北京、深圳等城市筛选使用 city；代表处名称使用 business_unit_name。
+  columns:
+  - name: business_unit_id
+    role: primary_key
+    description: 经营单元唯一编号。
+    alias:
+    - 经营单元ID
+    sync: false
+  - name: business_unit_name
+    role: dimension
+    description: 经营单元全称，如北京代表处、川藏代表处。
+    alias:
+    - 经营单元
+    - 代表处
+    - 办事处
+    sync: true
+  - name: province
+    role: dimension
+    description: 所属省级区域；川藏为简化区域名称。
+    alias:
+    - 省份
+    - 省
+    sync: true
+  - name: city
+    role: dimension
+    description: 经营单元驻地城市。
+    alias:
+    - 城市
+    - 北京
+    - 深圳
+    sync: true
+  - name: region_name
+    role: dimension
+    description: 销售大区，如华北、华东、华南。
+    alias:
+    - 大区
+    - 区域
+    - 地区
+    sync: true
+- name: dim_product
+  role: dim
+  description: 粒度：一产品型号一行。产品维度；产品线作为属性直接保存在本表，避免增加产品线维表。销售/合同通过 product_id 关联本表。
+  columns:
+  - name: product_id
+    role: primary_key
+    description: 产品唯一编号。
+    alias:
+    - 产品ID
+    sync: false
+  - name: product_model
+    role: dimension
+    description: 产品型号，如 R5300 G5；不等同于产品线。
+    alias:
+    - 产品型号
+    - 型号
+    - 产品名称
+    sync: true
+  - name: product_line
+    role: dimension
+    description: 通用计算、智能计算、存储、商业解决方案。政企解决方案在本 demo 归入商业解决方案。
+    alias:
+    - 产品线
+    - 商解
+    - 政企解决方案
+    sync: true
+  - name: product_type
+    role: dimension
+    description: 产品类型，如服务器、存储、解决方案。
+    alias:
+    - 产品类型
+    sync: true
+  - name: is_new_product
+    role: dimension
+    description: 是否新产品，1 是，0 否。
+    alias:
+    - 新产品
+    - 是否为新产品
+    sync: true
+- name: dim_industry
+  role: dim
+  description: 粒度：一行业小类一行。行业维度，行业大类和行业名称同时保留。原型的政企筛选对应 industry_category='政企'，不能把政企当作所有行业的小类名称。
+  columns:
+  - name: industry_id
+    role: primary_key
+    description: 行业唯一编号。
+    alias:
+    - 行业ID
+    sync: false
+  - name: industry_category
+    role: dimension
+    description: 行业大类：政企、商业市场、运营商。
+    alias:
+    - 行业大类
+    - 政企
+    sync: true
+  - name: industry_name
+    role: dimension
+    description: 行业小类，如数字政府、金融、互联网。
+    alias:
+    - 行业
+    - 行业小类
+    - 细分行业
+    sync: true
+- name: dim_project
+  role: dim
+  description: 粒度：一项目一行。PPL 项目基础信息；风险和阶段保存于 fact_project_snapshot，实际合同保存于 fact_contract_line。项目可能尚未签约或拥有多条合同明细。
+  columns:
+  - name: project_id
+    role: primary_key
+    description: 项目唯一编号。
+    alias:
+    - 项目ID
+    sync: false
+  - name: opportunity_no
+    role: dimension
+    description: 预销售/机会点编号。
+    alias:
+    - 机会点编号
+    - 预销售编号
+    sync: true
+  - name: project_name
+    role: dimension
+    description: 项目名称。
+    alias:
+    - 项目名称
+    - 项目
+    sync: true
+  - name: customer_name
+    role: dimension
+    description: 最终客户名称，简化为项目属性。
+    alias:
+    - 最终客户
+    - 客户名称
+    sync: true
+  - name: sales_owner
+    role: dimension
+    description: 项目销售负责人。
+    alias:
+    - 销售
+    - 负责人
+    sync: true
+- name: fact_sales_monthly
+  role: fact
+  description: 粒度：一月份 × 经营单元 × 产品型号 × 行业一行。月度已确认收入及销量；month_date_id 是月末 date_id，关联 dim_date.date_id。只保存已发生的当月增量，不存累计数。金额为不含税人民币元；截止
+    2026-05-31，有 2025/2026 年同期间数据。
+  columns:
+  - name: sales_id
+    role: primary_key
+    description: 月度销售事实唯一编号。
+    alias:
+    - 销售记录ID
+    sync: false
+  - name: month_date_id
+    role: foreign_key
+    description: 收入/销量归属月的月末日期；关联 dim_date.date_id。
+    alias:
+    - 收入月份
+    - 销售日期
+    sync: false
+  - name: business_unit_id
+    role: foreign_key
+    description: 收入归属经营单元；关联 dim_business_unit.business_unit_id。
+    alias:
+    - 经营单元ID
+    sync: false
+  - name: product_id
+    role: foreign_key
+    description: 收入归属产品型号；关联 dim_product.product_id。
+    alias:
+    - 产品ID
+    sync: false
+  - name: industry_id
+    role: foreign_key
+    description: 客户行业；关联 dim_industry.industry_id。
+    alias:
+    - 行业ID
+    sync: false
+  - name: revenue_amount
+    role: measure
+    description: 当月已确认不含税收入，单位元。销售额默认使用此字段；不是合同签约额。
+    alias:
+    - 收入
+    - 收入额
+    - 销售额
+    - 销售总额
+    sync: false
+  - name: sales_quantity
+    role: measure
+    description: 当月销售数量，单位台套。销售最多按数量排名；按销售额排名需使用 revenue_amount。
+    alias:
+    - 销量
+    - 销售数量
+    - 台套数
+    sync: false
+- name: fact_target_yearly
+  role: fact
+  description: 粒度：一年度 × 经营单元一行。年度目标；联合主键 target_year/business_unit_id。商业目标=不含税签约额，商解目标=商业解决方案不含税收入；原型未明确收入完成率分母，另设
+    revenue_target_amount 作为总收入目标。无产品线/行业目标粒度，不能把全单元目标当成某产品线目标。
+  columns:
+  - name: target_year
+    role: primary_key
+    description: 目标年度，也是联合主键的一部分。与汇总收入年份匹配，不关联 dim_date 每一天。
+    alias:
+    - 目标年度
+    - 年度
+    sync: true
+  - name: business_unit_id
+    role: foreign_key
+    description: 联合主键另一部分，目标所属经营单元；关联 dim_business_unit.business_unit_id。
+    alias:
+    - 经营单元ID
+    sync: false
+  - name: commercial_target_amount
+    role: measure
+    description: 全年不含税签约额目标，元。原型商业目标(万元)乘 10000 后入库。
+    alias:
+    - 商业目标
+    - 签约目标
+    sync: false
+  - name: solution_target_amount
+    role: measure
+    description: 全年商业解决方案产品线不含税收入目标，元。
+    alias:
+    - 商解目标
+    - 商业解决方案目标
+    sync: false
+  - name: revenue_target_amount
+    role: measure
+    description: 全年总收入目标，元；为收入完成率明确补充的 demo 假设，不等同于商业目标。
+    alias:
+    - 收入目标
+    - 年度收入目标
+    sync: false
+- name: fact_contract_line
+  role: fact
+  description: 粒度：一合同 × 明细行一行。实际已签约合同明细；contract_no/line_no 唯一，合同可有多个产品。金额为该行不含税元，不能在每一行重复存合同总额；合同数 COUNT(DISTINCT
+    contract_no)。通过 signed_date_id 统计签约月份，不用项目快照月份代替。
+  columns:
+  - name: contract_line_id
+    role: primary_key
+    description: 合同明细唯一编号。
+    alias:
+    - 合同明细ID
+    sync: false
+  - name: contract_no
+    role: dimension
+    description: 合同编号；同一合同在不同明细行重复出现。
+    alias:
+    - 合同编号
+    - 合同号
+    sync: true
+  - name: line_no
+    role: dimension
+    description: 合同内明细行号。
+    alias:
+    - 行号
+    sync: false
+  - name: project_id
+    role: foreign_key
+    description: 合同关联项目；关联 dim_project.project_id。
+    alias:
+    - 项目ID
+    sync: false
+  - name: signed_date_id
+    role: foreign_key
+    description: 合同实际签订日期；关联 dim_date.date_id。
+    alias:
+    - 合同签订日期
+    - 签订时间
+    sync: false
+  - name: business_unit_id
+    role: foreign_key
+    description: 合同签约业绩归属经营单元；关联 dim_business_unit.business_unit_id。
+    alias:
+    - 经营单元ID
+    sync: false
+  - name: product_id
+    role: foreign_key
+    description: 合同明细产品型号；关联 dim_product.product_id。
+    alias:
+    - 产品ID
+    sync: false
+  - name: industry_id
+    role: foreign_key
+    description: 合同客户行业；关联 dim_industry.industry_id。
+    alias:
+    - 行业ID
+    sync: false
+  - name: contract_quantity
+    role: measure
+    description: 本合同明细的签约数量；不等同于当月确认销量。
+    alias:
+    - 签约数量
+    - 合同台套数
+    sync: false
+  - name: contract_amount
+    role: measure
+    description: 本明细不含税签约金额，元；月度合同趋势及商业完成率使用此字段。
+    alias:
+    - 合同金额
+    - 不含税金额
+    - 签约额
+    sync: false
+- name: fact_project_snapshot
+  role: fact
+  description: 粒度：一快照日期 × 项目一行。PPL 项目阶段与风险快照。联合主键 snapshot_date_id/project_id。快照不是事件流水，同一项目多个快照不能累加。当前风险须先取每个项目最近一条快照，再筛选
+    is_active=1 和风险等级。最新演示快照 2026-05-31。
+  columns:
+  - name: snapshot_date_id
+    role: foreign_key
+    description: 风险状态观察日期，联合主键的一部分；关联 dim_date.date_id。
+    alias:
+    - 快照日期
+    - 数据截止日期
+    sync: false
+  - name: project_id
+    role: foreign_key
+    description: 联合主键另一部分，观察项目；关联 dim_project.project_id。
+    alias:
+    - 项目ID
+    sync: false
+  - name: business_unit_id
+    role: foreign_key
+    description: 快照时项目所属经营单元；关联 dim_business_unit.business_unit_id。
+    alias:
+    - 经营单元ID
+    sync: false
+  - name: industry_id
+    role: foreign_key
+    description: 快照时项目客户行业；关联 dim_industry.industry_id。
+    alias:
+    - 行业ID
+    sync: false
+  - name: project_stage
+    role: dimension
+    description: 商机、方案、投标、商务、签约、交付、完成。
+    alias:
+    - 项目阶段
+    - 阶段
+    sync: true
+  - name: risk_level
+    role: dimension
+    description: 项目整体风险等级：低风险、中风险、高风险。
+    alias:
+    - 项目风险等级
+    - 风险等级
+    - 高风险项目
+    sync: true
+  - name: competition_risk
+    role: dimension
+    description: 竞争风险等级。
+    alias:
+    - 项目竞争风险
+    sync: true
+  - name: signing_risk
+    role: dimension
+    description: 合同签订风险等级。
+    alias:
+    - 合同签订风险
+    sync: true
+  - name: delivery_risk
+    role: dimension
+    description: 供应与交付风险等级。
+    alias:
+    - 供应风险
+    - 交付风险
+    sync: true
+  - name: is_active
+    role: dimension
+    description: 是否仍在跟进，1 是；完成/关闭项目为 0，默认当前风险统计排除。
+    alias:
+    - 在跟进
+    - 活跃项目
+    sync: true
+  - name: risk_description
+    role: dimension
+    description: 项目进展及风险说明，不据此生成无数据依据的预测。
+    alias:
+    - 项目进展
+    - 风险说明
+    sync: false
+metrics:
+- name: 销售收入
+  description: SUM(fact_sales_monthly.revenue_amount)，不含税人民币元；万元展示除以 10000。按月份/经营单元/产品线/行业统计已确认收入，不能用签约额替代。
+  relevant_columns:
+  - fact_sales_monthly.revenue_amount
+  alias:
+  - 收入
+  - 收入额
+  - 销售额
+  - 销售总额
+- name: 销售数量
+  description: SUM(fact_sales_monthly.sales_quantity)，单位台套。销售最多默认按销量排名，按金额排名须明确使用销售收入。
+  relevant_columns:
+  - fact_sales_monthly.sales_quantity
+  alias:
+  - 销量
+  - 台套数
+  - 销售最多
+- name: 合同签约额
+  description: SUM(fact_contract_line.contract_amount)，不含税元；按 dim_date 对 signed_date_id 的年份/月份分组生成合同趋势，不从风险快照取合同金额。
+  relevant_columns:
+  - fact_contract_line.contract_amount
+  - fact_contract_line.signed_date_id
+  alias:
+  - 合同金额
+  - 签约额
+  - 合同金额趋势
+- name: 合同数量
+  description: COUNT(DISTINCT fact_contract_line.contract_no)。合同有多条产品明细，COUNT(*) 是明细数而不是合同数。
+  relevant_columns:
+  - fact_contract_line.contract_no
+  alias:
+  - 合同数
+  - 签约合同数
+- name: 商业目标
+  description: SUM(fact_target_yearly.commercial_target_amount)，指定年度的全经营单元不含税签约目标，元。
+  relevant_columns:
+  - fact_target_yearly.commercial_target_amount
+  - fact_target_yearly.target_year
+  alias:
+  - 签约目标
+  - 年度商业目标
+- name: 商解目标
+  description: SUM(fact_target_yearly.solution_target_amount)，指定年度商业解决方案产品线不含税收入目标，元。
+  relevant_columns:
+  - fact_target_yearly.solution_target_amount
+  - fact_target_yearly.target_year
+  alias:
+  - 商业解决方案目标
+- name: 收入目标
+  description: SUM(fact_target_yearly.revenue_target_amount)，指定年度全经营单元总收入目标，元。原型未明确此分母，demo 单独定义，不使用商业签约目标代替。
+  relevant_columns:
+  - fact_target_yearly.revenue_target_amount
+  - fact_target_yearly.target_year
+  alias:
+  - 年度收入目标
+- name: 收入完成率
+  description: 已确认收入 / NULLIF(年度收入目标,0) * 100。先将月度收入按年度/经营单元汇总，再与 fact_target_yearly 关联；多单元整体完成率用总收入/总目标，不能平均行比例或把目标
+    JOIN 到每条收入明细后重复求和。默认截至 2026-05-31，对比全年目标；本库无单独的行业/产品线收入目标。
+  relevant_columns:
+  - fact_sales_monthly.revenue_amount
+  - fact_sales_monthly.month_date_id
+  - fact_target_yearly.revenue_target_amount
+  - fact_target_yearly.target_year
+  - fact_target_yearly.business_unit_id
+  alias:
+  - 完成率
+  - 目标达成率
+  - 收入达成
+- name: 商业完成率
+  description: 不含税合同签约额 / NULLIF(全年商业目标,0) * 100。合同和目标先按年度/经营单元分别聚合后关联。
+  relevant_columns:
+  - fact_contract_line.contract_amount
+  - fact_contract_line.signed_date_id
+  - fact_target_yearly.commercial_target_amount
+  - fact_target_yearly.target_year
+  - fact_target_yearly.business_unit_id
+  alias:
+  - 签约达成率
+  - 商业达成率
+- name: 商解完成率
+  description: 仅 dim_product.product_line='商业解决方案' 的收入 / NULLIF(全年商解目标,0) * 100，按年度/经营单元先聚合再关联。
+  relevant_columns:
+  - fact_sales_monthly.revenue_amount
+  - dim_product.product_line
+  - fact_target_yearly.solution_target_amount
+  - fact_target_yearly.target_year
+  - fact_target_yearly.business_unit_id
+  alias:
+  - 商解达成率
+- name: 收入同比
+  description: (本期收入-上年同期收入)/NULLIF(上年同期收入,0)*100；按同一维度和同一月份范围比较。2026 年数据截至 5 月，默认比较 2025 年 1-5 月；不能拿今年部分月份比较去年全年。
+  relevant_columns:
+  - fact_sales_monthly.revenue_amount
+  - fact_sales_monthly.month_date_id
+  - dim_date.year
+  - dim_date.month
+  alias:
+  - 同比
+  - 同比变化
+  - 增长率
+  - 下滑趋势
+- name: 收入占比
+  description: 分组收入/NULLIF(同一筛选范围总收入,0)*100。原型政企 3000万-5000万筛选在 GROUP BY 后用 HAVING；饼图默认以筛选后保留经营单元合计为分母。产品 TOP3 占比默认以全部产品收入为分母，再取
+    TOP3。
+  relevant_columns:
+  - fact_sales_monthly.revenue_amount
+  alias:
+  - 收入占比
+  - 销售额占比
+  - 饼图占比
+- name: 当前高风险项目数
+  description: 先按 project_id 取 fact_project_snapshot 最近快照，随后筛选 is_active=1 AND risk_level='高风险'，COUNT(DISTINCT project_id)。不能累计历史快照，也不能先筛高风险再取最近快照；演示最新数据截止
+    2026-05-31。
+  relevant_columns:
+  - fact_project_snapshot.project_id
+  - fact_project_snapshot.snapshot_date_id
+  - fact_project_snapshot.risk_level
+  - fact_project_snapshot.is_active
+  alias:
+  - 高风险项目
+  - 高风险项目数量
+  - 目前有多少高风险项目

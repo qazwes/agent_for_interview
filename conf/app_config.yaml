@@ -1,0 +1,49 @@
+logging:
+  file:
+    enable: false
+    level: INFO
+    path: logs
+    rotation: "10 MB"
+    retention: "7 days"
+  console:
+    enable: true
+    level: INFO
+
+db_meta:
+  host: ${oc.env:DB_META_HOST,mysql}
+  port: 3306
+  user: didilili
+  password: ${oc.env:DB_META_PASSWORD}
+  database: meta
+
+db_dw:
+  host: ${oc.env:DB_DW_HOST,mysql}
+  port: 3306
+  user: ${oc.env:DB_DW_USER,dw_reader}
+  password: ${oc.env:DB_DW_PASSWORD}
+  database: dw
+
+db_app:
+  host: ${oc.env:DB_APP_HOST,mysql}
+  port: 3306
+  user: ${oc.env:DB_APP_USER,didilili}
+  password: ${oc.env:DB_APP_PASSWORD,${oc.env:DB_META_PASSWORD}}
+  database: agent_app
+
+qdrant:
+  host: ${oc.env:QDRANT_HOST,qdrant}
+  port: 6333
+  embedding_size: 1024
+
+embedding:
+  host: ${oc.env:EMBEDDING_HOST,embedding}
+  port: ${oc.env:EMBEDDING_PORT,80}
+
+es:
+  host: ${oc.env:ES_HOST,elasticsearch}
+  port: 9200
+
+llm:
+  model_name: ${oc.env:LLM_MODEL,Pro/zai-org/GLM-5.1}
+  api_key: ${oc.env:LLM_API_KEY,''}
+  base_url: ${oc.env:LLM_BASE_URL,https://api.siliconflow.cn/v1}
