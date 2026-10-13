@@ -236,7 +236,7 @@ def render_dw() -> str:
              "-- 确定性合成数据，不照搬原型相互矛盾的模拟结果。金额统一不含税人民币元。",
              "-- 收入数据截止 2026-05-31；日期维度覆盖完整 2025/2026 年，不代表未来已有收入。",
              "SET NAMES utf8mb4;", "CREATE DATABASE IF NOT EXISTS dw DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
-             "GRANT SELECT ON dw.* TO 'didilili'@'%';", "USE dw;", ""]
+             "GRANT SELECT ON dw.* TO 'HeJing'@'%';", "USE dw;", ""]
     # 子表先于父表删除；兼容尚未使用的新建库以及旧教学脚本的表名。
     for name in [t.name for t in reversed(TABLES)] + ["fact_order", "dim_customer", "dim_region"]:
         lines.append(f"DROP TABLE IF EXISTS `{name}`;")
@@ -276,7 +276,7 @@ def render_meta_sql() -> str:
 -- metadata-init 从 DW 获取实际字段类型/示例后填充，避免重复预填。
 SET NAMES utf8mb4;
 CREATE DATABASE IF NOT EXISTS meta DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-GRANT SELECT, INSERT, UPDATE, DELETE ON meta.* TO 'didilili'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON meta.* TO 'HeJing'@'%';
 USE meta;
 
 -- 有真实外键后必须先删除子表。

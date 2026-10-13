@@ -12,7 +12,7 @@ logging:
 db_meta:
   host: ${oc.env:DB_META_HOST,mysql}
   port: 3306
-  user: didilili
+  user: ${oc.env:DB_META_USER,HeJing}
   password: ${oc.env:DB_META_PASSWORD}
   database: meta
 
@@ -26,7 +26,7 @@ db_dw:
 db_app:
   host: ${oc.env:DB_APP_HOST,mysql}
   port: 3306
-  user: ${oc.env:DB_APP_USER,didilili}
+  user: ${oc.env:DB_APP_USER,HeJing}
   password: ${oc.env:DB_APP_PASSWORD,${oc.env:DB_META_PASSWORD}}
   database: agent_app
 

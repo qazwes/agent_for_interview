@@ -8,9 +8,10 @@ x-backend: &backend
   environment:
     TZ: ${TZ:-Asia/Shanghai}
     DB_META_HOST: mysql
+    DB_META_USER: HeJing
     DB_META_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
     DB_APP_HOST: mysql
-    DB_APP_USER: didilili
+    DB_APP_USER: HeJing
     DB_APP_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
     DB_DW_HOST: mysql
     DB_DW_USER: dw_reader
@@ -40,7 +41,7 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
       MYSQL_DATABASE: meta
-      MYSQL_USER: didilili
+      MYSQL_USER: HeJing
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
       DW_QUERY_PASSWORD: ${DW_QUERY_PASSWORD:?Set DW_QUERY_PASSWORD in .env}
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_general_ci"]
@@ -53,6 +54,17 @@ services:
       timeout: 5s
       retries: 20
       start_period: 30s
+
+  adminer:
+    image: adminer:5
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+    ports:
+      - "127.0.0.1:${ADMINER_PORT:-8081}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
 
   elasticsearch:
     build: ./elasticsearch
@@ -109,6 +121,27 @@ services:
     volumes:
       - embedding_models:/models:ro
 
+  asr:
+    image: my-agent-asr:local
+    profiles: ["speech"]
+    build:
+      context: ..
+      dockerfile: docker/asr/Dockerfile
+    restart: "no"
+    environment:
+      ASR_CPU_THREADS: ${ASR_CPU_THREADS:-2}
+    volumes:
+      - asr_models:/models:ro
+    # 音频及解码文件只保存在内存临时目录，不落入持久化模型卷。
+    tmpfs:
+      - /tmp:size=128m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 900s
+
   api:
     <<: *backend
     restart: unless-stopped
@@ -131,6 +164,22 @@ services:
         condition: service_healthy
 
   # 工具服务仅在显式指定时运行。
+  asr-model-download:
+    image: my-agent-asr:local
+    build:
+      context: ..
+      dockerfile: docker/asr/Dockerfile
+    profiles: ["tools"]
+    environment:
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://huggingface.co}
+      HF_TOKEN: ${HF_TOKEN:-}
+      ASR_MODEL_REVISION: ${ASR_MODEL_REVISION:-main}
+      ASR_VAD_REVISION: ${ASR_VAD_REVISION:-main}
+      ASR_PUNC_REVISION: ${ASR_PUNC_REVISION:-main}
+    command: ["python", "download_models.py"]
+    volumes:
+      - asr_models:/models
+
   metadata-init:
     <<: *backend
     profiles: ["tools"]
@@ -156,3 +205,4 @@ volumes:
   kibana_data:
   qdrant_data:
   embedding_models:
+  asr_models:

@@ -2,7 +2,7 @@
 
 my-agent 是面向销售经营分析的自然语言问数应用。用户输入问题后，系统检索字段、指标和字段取值，生成并执行 SQL，以表格、统计和图表呈现结果。
 
-项目使用 React、TypeScript、FastAPI 和 LangGraph，通过 Docker Compose 部署前后端、MySQL、Elasticsearch、Qdrant 和 Embedding 服务，支持 Windows 开发与 Linux 部署。
+项目使用 React、TypeScript、FastAPI 和 LangGraph，通过 Docker Compose 部署前后端、MySQL、Elasticsearch、Qdrant 和 Embedding 服务，支持 Windows 开发与 Linux 部署。另保留独立语音识别的部署配置，暂未接入产品。
 
 首次部署从[快速部署](#快速部署)开始；了解实现从[代码阅读指引](#代码阅读指引)开始；测试方法统一见 [tests/README.md](tests/README.md)。
 
@@ -53,10 +53,13 @@ my-agent/
 | web | Nginx 静态页面及 API/SSE 代理 | 默认 http://localhost:8080 |
 | api | FastAPI、LangGraph | 经 web 访问，不单独映射端口 |
 | mysql | 数仓、元数据库、应用数据库 | Compose 内部网络 |
+| adminer | 浏览器查看和管理 MySQL 数据 | 默认 http://localhost:8081，仅本机 |
 | elasticsearch | 字段取值全文检索、IK 中文分词 | Compose 内部网络 |
 | kibana | ES 索引查看与检索调试 | 默认 http://localhost:5601，仅本机 |
 | qdrant | 字段与指标向量检索 | Compose 内部网络 |
 | embedding | TEI、bge-large-zh-v1.5、CPU | Compose 内部网络 |
+| asr | 预留 FunASR CPU 语音识别服务，默认不启动 | speech profile，无宿主端口，未接入 api |
+| asr-model-download | 从 Hugging Face 下载三个语音模型 | tools 工具服务，手动运行 |
 | model-download | 下载 Embedding 模型到持久化卷 | tools 工具服务，手动运行 |
 | metadata-init | 构建结构化元数据和检索索引 | tools 工具服务，手动运行 |
 
@@ -98,10 +101,10 @@ Copy-Item .env.example .env
 
 - 设置 `MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD`、`DW_QUERY_PASSWORD`。只读账号初始化要求 `DW_QUERY_PASSWORD` 仅包含字母、数字、下划线和连字符。
 - 设置 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`，三者必须对应同一个可用的 OpenAI 兼容模型服务。Base URL 填写接口前缀，例如 `https://服务域名/v1`。
-- `WEB_PORT` 默认 8080，`KIBANA_PORT` 默认 5601；端口冲突时修改。
+- `WEB_PORT` 默认 8080，`KIBANA_PORT` 默认 5601，`ADMINER_PORT` 默认 8081；端口冲突时修改。
 - 按需设置 `HF_ENDPOINT`、`HF_TOKEN`、`EMBEDDING_REVISION`。
 
-`.env` 不进入版本控制或镜像。Compose 将配置注入容器环境变量；默认 Meta 和应用库共用 `MYSQL_PASSWORD`，数仓查询使用单独的只读账号。
+`.env` 不进入版本控制或镜像。Compose 将配置注入容器环境变量；默认 Meta 和应用库使用 `HeJing`，共用 `MYSQL_PASSWORD`，数仓查询使用单独的只读账号 `dw_reader`。
 
 ### 2. 检查并构建
 
@@ -120,10 +123,12 @@ docker compose --env-file .env -f docker/docker-compose.yaml --profile tools run
 
 模型写入 `embedding_models` 命名卷，TEI 从同一卷只读加载。该步骤不调用聊天模型，也不依赖数据库。
 
+语音模型使用单独的数据卷；当前暂未接入产品，资源充足后按下方[部署预留](#语音识别部署预留)独立验证。
+
 ### 4. 启动依赖并构建知识库
 
 ```bash
-docker compose --env-file .env -f docker/docker-compose.yaml up -d mysql elasticsearch kibana qdrant embedding
+docker compose --env-file .env -f docker/docker-compose.yaml up -d mysql adminer elasticsearch kibana qdrant embedding
 docker compose --env-file .env -f docker/docker-compose.yaml --profile tools run --rm metadata-init
 ```
 
@@ -170,6 +175,19 @@ docker compose --env-file .env -f docker/docker-compose.yaml down
 
 修改 `.env` 后，用 `up -d --no-deps api` 重新创建后端以加载环境变量；仅 `restart` 不会更新环境变量。已有 MySQL 数据卷不会因修改初始化 SQL 或密码配置而重新初始化；结构和密码变更需要执行相应数据库迁移或账号更新。
 
+### 将已有数据库账号迁移为 HeJing
+
+新环境会自动创建 `HeJing`。已有数据卷使用旧账号时，从 `my-agent/` 目录执行一次迁移，再更新服务：
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.yaml cp docker/migrations/add-hejing-user.sh mysql:/tmp/add-hejing-user.sh
+docker compose --env-file .env -f docker/docker-compose.yaml exec -T mysql sh /tmp/add-hejing-user.sh
+docker compose --env-file .env -f docker/docker-compose.yaml up -d --no-deps mysql
+docker compose --env-file .env -f docker/docker-compose.yaml up -d --build --no-deps api
+```
+
+迁移脚本为新账号复制旧账号的认证信息，授予 DW 查询权限和 Meta、应用库的数据读写权限；保留旧账号和全部数据，不输出密码或认证哈希。若 `HeJing` 已存在，保留其已有密码。Adminer 用 `HeJing` 和原来的 `MYSQL_PASSWORD` 登录。仅修改 Compose 的 `MYSQL_USER` 不会更新已有数据库账号。
+
 ### 为已有数据卷创建应用库
 
 MySQL 已有数据卷且缺少 `agent_app` 时，确认 MySQL 服务运行后执行：
@@ -187,6 +205,83 @@ sh docker/upgrade-app.sh
 ```
 
 脚本幂等创建应用库与表并授予权限，不清空会话，不重建 DW、Meta 或索引。随后按上面的更新命令启动前后端。
+
+### 语音识别部署预留
+
+**当前仅保留独立 ASR 的部署配置和模型文件，尚未接入产品功能。** 主后端没有注册 `/api/speech/transcribe`，前端不显示麦克风按钮或可用的语音开关。
+
+本机验证环境为约 16 GB 宿主内存、约 8 GB Docker 内存，同时运行问数依赖。语音模型加载期间，宿主可用内存降到约 1.2 GB，Docker 容器查询曾返回 500，ASR 多次重新启动且未通过健康检查。停止 ASR 后，现有页面恢复。当前证据表明存在明显资源压力，但容器最终状态未标记 `OOMKilled`，不能仅凭退出码 137 确认是 OOM。**模型下载成功；模型加载和真实转写尚未验证成功。**
+
+保留的内容：
+
+- [Dockerfile](docker/asr/Dockerfile)：Python 3.11、CPU 版 PyTorch、FunASR 和 FFmpeg，独立于主后端环境。
+- [download_models.py](docker/asr/download_models.py)：从 Hugging Face 下载 `funasr/paraformer-zh`、`funasr/fsmn-vad`、`funasr/ct-punc`。
+- [server.py](docker/asr/server.py)：独立服务的加载、音频解码、时长限制和识别处理，供后续验证与接入。
+- Compose 的 `asr`、`asr-model-download` 服务及 `asr_models` 卷。
+- `.env.example` 的 `ASR_CPU_THREADS`、三个模型 revision；下载沿用 `HF_ENDPOINT`、`HF_TOKEN`。
+
+下载的三个模型权重文件约为 840 MiB、2 MiB、1073 MiB；这些是文件大小，**不代表加载或推理内存上限**。加载时还会占用模型对象、权重副本、运行时及其他容器所需内存。
+
+`asr` 放在 `speech` profile，默认 `docker compose up -d` 不启动；关闭自动重启，避免失败后反复加载。无需修改主应用配置或数据库。未来在资源充足的 Linux 环境中，先独立验证：
+
+```bash
+# 下载模型，已下载的文件会复用；可单独执行，不启动推理。
+docker compose --env-file .env -f docker/docker-compose.yaml --profile tools run --rm --build --no-deps asr-model-download
+
+# 显式启动 ASR，仅在准备好资源后执行。
+docker compose --env-file .env -f docker/docker-compose.yaml --profile speech up -d asr
+docker compose --env-file .env -f docker/docker-compose.yaml --profile speech ps asr
+docker compose --env-file .env -f docker/docker-compose.yaml --profile speech logs --tail=100 asr
+
+# 加载失败或资源紧张时停止，保留模型卷。
+docker compose --env-file .env -f docker/docker-compose.yaml --profile speech stop asr
+```
+
+推理容器只读加载本地模型，音频在内存临时目录处理并清理，不保存到数据库或模型卷。服务没有映射宿主端口；内部 `POST /transcribe` 仅供独立测试，不是产品 API。等待日志显示 `ASR models ready`、容器 healthy 后，按[独立 ASR 测试说明](tests/README.md#10-独立-asr-预留服务验证)检查真实音频。
+
+后续接入顺序：先验证资源和中文业务录音效果，再补主后端 Router → Service → ASR Client、Nginx 上传配置、前端录音/回填及应用开关。届时采用录完转写、用户编辑确认后发送；远程浏览器录音需 HTTPS。当前不宣称语音输入已经可用。
+
+### Adminer 查看和管理 MySQL
+
+已有环境从 `my-agent/` 目录执行以下命令添加服务，无需重建后端或初始化数据库：
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.yaml up -d adminer
+docker compose --env-file .env -f docker/docker-compose.yaml ps adminer
+```
+
+默认打开 http://localhost:8081，登录填写：
+
+| 登录项 | 填写内容 |
+| --- | --- |
+| 系统 / System | MySQL |
+| 服务器 / Server | `mysql`（容器服务名） |
+| 用户名 / Username | `HeJing` |
+| 密码 / Password | `.env` 中的 `MYSQL_PASSWORD` |
+| 数据库 / Database | `agent_app` |
+
+登录后可以通过浏览器处理数据：
+
+1. **查看表结构**：点击 `chat_session` 或 `chat_message` 表名，查看字段、主键和索引。
+2. **查看记录**：点击“选择数据 / Select data”，查看行；使用筛选条件和排序定位数据。
+3. **查看某个会话**：在 `chat_session` 找到 `id`，在 `chat_message` 的筛选中设置 `session_id = 该ID`，按 `created_at` 排序。`content` 是消息正文，`payload` 包含结果、SQL 和分析步骤。
+4. **编辑记录**：点击行旁的“编辑 / Edit”，例如修改会话 `title`，保存后刷新问数页面即可看到变化。
+5. **执行查询**：进入“SQL 命令 / SQL command”，执行下面的 SQL。
+6. **导出数据**：使用“导出 / Export”选择 SQL 或 CSV；需要修改数据前可以先导出备份。
+
+```sql
+SELECT id, title, pinned, created_at, updated_at
+FROM chat_session ORDER BY updated_at DESC LIMIT 20;
+
+SELECT id, session_id, role, content, status, payload, created_at
+FROM chat_message ORDER BY created_at DESC LIMIT 20;
+```
+
+Adminer 的修改直接写入真实数据库，不经过应用的业务规则。会话删除、问题重发和反馈处理优先使用应用页面，避免绕过进行中查询检查等规则；不要清空仍在使用的表或随意修改记录 ID。应用升级通过迁移脚本维护，Adminer 中改表不会同步更新项目 SQL/ORM。
+
+查看元数据时，数据库改为 `meta`，使用同一账号；查看数仓时用 `dw_reader`、`.env` 中的 `DW_QUERY_PASSWORD` 和数据库 `dw`，该账号只能查询。
+
+已有 `.env` 不必添加 `ADMINER_PORT`，默认使用 8081；需要换端口时再设置并重新执行 `up -d adminer`。默认仅监听本机；Linux 远程部署使用 `ssh -L 8081:127.0.0.1:8081 用户名@服务器地址` 建立隧道，然后打开本机地址。
 
 ### Kibana 检索调试
 
@@ -246,6 +341,7 @@ python -m app.scripts.generate_demo_warehouse
 | 7. 配置与模型 | [preferences.tsx](frontend/src/state/preferences.tsx)、[AppConfigPage.tsx](frontend/src/pages/AppConfigPage.tsx)、[ModelConfigPage.tsx](frontend/src/pages/ModelConfigPage.tsx)、[model_service.py](app/services/model_service.py)、[llm.py](app/agent/llm.py) | 浏览器设置、模型连接测试、服务端保存与请求内模型固定 |
 | 8. 知识库 | [app_config.yaml](conf/app_config.yaml)、[meta_config.yaml](conf/meta_config.yaml)、[build_meta_knowledge.py](app/scripts/build_meta_knowledge.py)、[meta_knowledge_service.py](app/services/meta_knowledge_service.py) | 配置、定义补全、结构化元数据、向量和全文索引 |
 | 9. 错误收尾 | [query_progress.py](app/services/query_progress.py)、[queryProgress.ts](frontend/src/lib/queryProgress.ts) | 并行失败、停止、断流及历史记录的进度终止 |
+| 9b. 语音部署预留 | [Dockerfile](docker/asr/Dockerfile)、[download_models.py](docker/asr/download_models.py)、[server.py](docker/asr/server.py) | 独立模型下载/推理配置，暂未接入产品 |
 | 10. 测试 | [tests/README.md](tests/README.md) | 各层回归、部署验收及真实模型验证 |
 
 提问链路：`ChatPage → useChat → streamQuery → /api/query → QueryService → graph → run_sql → result_presenter → SSE result → AnswerCard`。
@@ -258,11 +354,11 @@ python -m app.scripts.generate_demo_warehouse
 
 按“离线回归 → 知识库验证 → 产品接口 → 正常/故障浏览器验收 → 真实问数”执行。离线和浏览器模拟测试不调用聊天模型；真实问数需显式传入 `--query`。
 
-已通过 28 项离线回归、全后端与测试 Ruff 检查、前端类型检查和生产构建、接口验收、正常/故障浏览器验收，以及真实知识库验证。真实模型查询已验证商业目标 TOP5 的返回、保存和反馈链路。测试通过不代表所有自然语言问题的业务答案均正确。
+已通过 35 项离线回归（含独立 ASR 的模拟测试）、全后端与测试 Ruff 检查、前端类型检查和生产构建、接口验收、正常/故障浏览器验收，以及真实知识库验证。真实模型查询已验证商业目标 TOP5 的返回、保存和反馈链路。ASR 的真实模型加载及转写尚未通过验证；测试通过不代表所有自然语言问题的业务答案均正确。
 
 ## 当前边界与排查
 
-- 目前不提供语音、登录、用户管理、报表、台账、日志管理或数据源选择页面。
+- 目前不提供语音输入/播放、登录、用户管理、报表、台账、日志管理或数据源选择页面。语音仅保留独立部署配置，真实加载和转写待验证。
 - 历史问答以 JSON 保存；尚无专门改写“那上海呢”等省略问句的多轮上下文节点。
 - 复杂 SQL 表达式的字段含义和单位需业务核对；排名合计只覆盖返回记录，比例及 AVG/MIN/MAX 不累加。
 - SSE 的 HTTP 200 表示连接建立，查询结果以 `result` 为准，失败以 `error` 和节点日志定位。

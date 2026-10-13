@@ -3,7 +3,7 @@
 -- 收入数据截止 2026-05-31；日期维度覆盖完整 2025/2026 年，不代表未来已有收入。
 SET NAMES utf8mb4;
 CREATE DATABASE IF NOT EXISTS dw DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-GRANT SELECT ON dw.* TO 'didilili'@'%';
+GRANT SELECT ON dw.* TO 'HeJing'@'%';
 USE dw;
 
 DROP TABLE IF EXISTS `fact_project_snapshot`;

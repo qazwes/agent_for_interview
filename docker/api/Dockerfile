@@ -16,6 +16,7 @@ COPY conf/ conf/
 COPY prompts/ prompts/
 COPY tests/ tests/
 COPY docker/mysql/ docker/mysql/
+COPY docker/asr/server.py docker/asr/server.py
 COPY database/ database/
 COPY main.py LICENSE ./
 CMD ["/app/.venv/bin/python", "-m", "pytest", "tests", "-q"]

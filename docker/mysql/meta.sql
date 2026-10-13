@@ -2,7 +2,7 @@
 -- metadata-init 从 DW 获取实际字段类型/示例后填充，避免重复预填。
 SET NAMES utf8mb4;
 CREATE DATABASE IF NOT EXISTS meta DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-GRANT SELECT, INSERT, UPDATE, DELETE ON meta.* TO 'didilili'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON meta.* TO 'HeJing'@'%';
 USE meta;
 
 -- 有真实外键后必须先删除子表。

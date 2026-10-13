@@ -56,6 +56,7 @@ uv run --frozen python -m pytest tests -q
 | [test_result_presenter.py](test_result_presenter.py) | TOP5 真实合计与单位、比例/AVG 不累加、COUNT 分类、CTE 引用、空结果、建议上下文 | result_presenter.py |
 | [test_query_integration.py](test_query_integration.py) | 模拟工作流下 SSE、问题传递、结果保存；并行失败时中断其他步骤；取消、客户端断开、无结果结束后的原始落库状态及手动重发 | QueryService、query_progress.py |
 | [test_model_service.py](test_model_service.py) | 模拟有正文回复、空回复失败、异常中的密钥不回传 | ModelService |
+| [test_asr.py](test_asr.py) | 预留独立服务的文件边界、临时目录清理和请求取消后的模型锁 | docker/asr/server.py（模拟模型，不加载权重） |
 
 SQLite 回归不能证明 MySQL 8 的全部方言与并发行为；模拟工作流不能证明真实 SQL 生成正确。模型连接回归使用模拟响应，不访问模型服务，真实链路另行验收。
 
@@ -270,3 +271,35 @@ docker compose --env-file .env -f docker/docker-compose.yaml logs -f --tail=100 
 业务规则放入相应 `test_*.py`：准备最小输入/临时数据 → 调用业务函数 → 断言结果或异常。模型/检索依赖模拟，持久化规则用临时 SQLite，再补真实接口验收。
 
 例如常问阈值验证“等于不出现、超过才出现”；统计验证真实合计和比例不累加。测试应验证行为，避免只重复实现步骤。接口扩展 `smoke_api.py`，交互扩展 `browser_smoke.mjs`，同步本文覆盖范围。
+
+## 10. 独立 ASR 预留服务验证
+
+语音部署配置保留，但当前未接入产品页面或主后端接口。请先阅读[部署状态与资源说明](../README.md#语音识别部署预留)。默认测试无需启动 ASR 或加载真实模型。
+
+### 离线测试
+
+`test_asr.py` 使用模拟模型和解码器，验证独立服务的文件边界、临时文件清理，以及取消请求后不会提前释放模型锁。它随完整 pytest 执行，也可单独运行：
+
+```bash
+docker run --rm my-agent-test:local /app/.venv/bin/python -m pytest tests/test_asr.py -q
+```
+
+这些测试不验证真实模型是否能在本机内存中加载。
+
+### 未来在资源充足的环境验证模型
+
+按项目 README 显式启动 `speech` profile，ASR 必须 healthy，且日志显示 `ASR models ready`。目前本机加载未成功，不应执行重复加载来强行验收。
+
+`smoke_asr.py` 仅使用 Python 标准库，直接请求独立服务的 `/transcribe`，不经过主后端，不发起问数或写数据库。PowerShell/Linux 均可从项目目录执行：
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.yaml --profile speech cp tests/smoke_asr.py asr:/tmp/smoke_asr.py
+docker compose --env-file .env -f docker/docker-compose.yaml --profile speech exec -T asr python /tmp/smoke_asr.py
+docker compose --env-file .env -f docker/docker-compose.yaml --profile speech exec -T asr python /tmp/smoke_asr.py --audio /models/paraformer/example/asr_example.wav
+```
+
+默认测试：空录音 422、超过 10 MB 的文件 413、损坏音频 422、61 秒录音 422、纯静音 422。临时音频在内存生成并清理；模型仓库附带样例属于公开测试素材。`--audio` 增加实际转写，要求返回非空文字，输出耗时；可通过 `--expect-text` 指定应包含的词句，忽略标点及大小写。
+
+要测试自己的录音，先用 Compose `cp` 复制到容器的 `/tmp/`，再指定文件路径；测试后删除临时录音。真实识别未通过前，不应把语音列为已完成功能。通用样例也不能证明“商解收入”、产品型号等业务术语都识别准确。
+
+资源排查：先看 ASR 日志、健康检查和 `docker stats --no-stream`；若加载失败且影响原有服务，停止 ASR 并保留模型卷。下载问题检查 `HF_ENDPOINT`、权限和模型 revision；无需重建数据库或知识库。
