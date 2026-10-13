@@ -175,19 +175,6 @@ docker compose --env-file .env -f docker/docker-compose.yaml down
 
 修改 `.env` 后，用 `up -d --no-deps api` 重新创建后端以加载环境变量；仅 `restart` 不会更新环境变量。已有 MySQL 数据卷不会因修改初始化 SQL 或密码配置而重新初始化；结构和密码变更需要执行相应数据库迁移或账号更新。
 
-### 将已有数据库账号迁移为 HeJing
-
-新环境会自动创建 `HeJing`。已有数据卷使用旧账号时，从 `my-agent/` 目录执行一次迁移，再更新服务：
-
-```bash
-docker compose --env-file .env -f docker/docker-compose.yaml cp docker/migrations/add-hejing-user.sh mysql:/tmp/add-hejing-user.sh
-docker compose --env-file .env -f docker/docker-compose.yaml exec -T mysql sh /tmp/add-hejing-user.sh
-docker compose --env-file .env -f docker/docker-compose.yaml up -d --no-deps mysql
-docker compose --env-file .env -f docker/docker-compose.yaml up -d --build --no-deps api
-```
-
-迁移脚本为新账号复制旧账号的认证信息，授予 DW 查询权限和 Meta、应用库的数据读写权限；保留旧账号和全部数据，不输出密码或认证哈希。若 `HeJing` 已存在，保留其已有密码。Adminer 用 `HeJing` 和原来的 `MYSQL_PASSWORD` 登录。仅修改 Compose 的 `MYSQL_USER` 不会更新已有数据库账号。
-
 ### 为已有数据卷创建应用库
 
 MySQL 已有数据卷且缺少 `agent_app` 时，确认 MySQL 服务运行后执行：
